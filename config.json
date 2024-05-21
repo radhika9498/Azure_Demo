@@ -1,0 +1,35 @@
+{
+    "mount_paths": {
+        "storage_account": "storageaccradhika",
+        "container_name": "azure-poc-radhika",
+        "mount_point": "/mnt/blobstorage"
+    },
+    "access_tokens": {
+        "adls_accs_token": "use your own token"
+    },
+    "table_list": [
+        "SalesLTAddress",
+        "SalesLTCustomer",
+        "SalesLTCustomerAddress",
+        "SalesLTProduct",
+        "SalesLTProductCategory",
+        "SalesLTProductDescription",
+        "SalesLTProductModel",
+        "SalesLTProductModelProductDescription",
+        "SalesLTSalesOrderDetail",
+        "SalesLTSalesOrderHeader"
+    ],
+    "primary_key_columns": {
+        "SalesLTAddress": ["AddressID"],
+        "SalesLTCustomer": ["CustomerID"],
+        "SalesLTCustomerAddress": ["CustomerID", "AddressID"],
+        "SalesLTProduct": ["ProductID"],
+        "SalesLTProductCategory": ["ProductCategoryID"],
+        "SalesLTProductDescription": ["ProductDescriptionID"],
+        "SalesLTProductModel": ["ProductModelID"],
+        "SalesLTProductModelProductDescription": ["ProductModelID", "ProductDescriptionID", "Culture"],
+        "SalesLTSalesOrderDetail": ["SalesOrderID", "SalesOrderDetailID"],
+        "SalesLTSalesOrderHeader": ["SalesOrderID"]
+    }
+    
+}
