@@ -1,0 +1,546 @@
+{
+    "name": "End To End Pipeline",
+    "properties": {
+        "activities": [
+            {
+                "name": "BronzeToSilver",
+                "type": "DatabricksNotebook",
+                "dependsOn": [
+                    {
+                        "activity": "If Condition for Source",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "notebookPath": "/Users/radhika.dorlikar@tigeranalytics.com/BronzeZone-SilverZone",
+                    "baseParameters": {
+                        "SourceType": {
+                            "value": "@variables('SourceType')",
+                            "type": "Expression"
+                        },
+                        "LoadType": {
+                            "value": "@variables('LoadType')",
+                            "type": "Expression"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "BronzeToSilver",
+                    "type": "LinkedServiceReference"
+                }
+            },
+            {
+                "name": "SilverToGold",
+                "type": "DatabricksNotebook",
+                "dependsOn": [
+                    {
+                        "activity": "BronzeToSilver",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "notebookPath": "/Users/radhika.dorlikar@tigeranalytics.com/SilverToGold",
+                    "baseParameters": {
+                        "SourceType": {
+                            "value": "@variables('SourceType')",
+                            "type": "Expression"
+                        },
+                        "LoadType": {
+                            "value": "@variables('LoadType')",
+                            "type": "Expression"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "BronzeToSilver",
+                    "type": "LinkedServiceReference"
+                }
+            },
+            {
+                "name": "Email  Notification for Silver to Gold Failure",
+                "type": "WebActivity",
+                "dependsOn": [
+                    {
+                        "activity": "Failed log audit",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "method": "POST",
+                    "url": "https://prod-32.eastus.logic.azure.com:443/workflows/edba35b53ef0485aa10b5080ce673777/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=c2UKqjoSYTZWuiVUtVm5s5KjF3ywR9lgIuRNzIPLfDk",
+                    "body": {
+                        "value": "{\n    \"PipelineStatus\": \"Failed\",\n    \"pipeline\" : \"@{pipeline().Pipeline}\",\n    \"DataFactoryName\" :\"@{pipeline().DataFactory}\",\n    \"Runid\" : \"@{pipeline().RunId}\",\n    \"runPageUrl\" : \"@{activity('SilverToGold').output.runPageUrl}\",\n    \"activityName\" : \"SilverToGold\"\n}\n",
+                        "type": "Expression"
+                    }
+                }
+            },
+            {
+                "name": "Insert Audit Details",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "storedProcedureName": "[dbo].inprogress_log_audits",
+                    "storedProcedureParameters": {
+                        "Acquisitionstrategy": {
+                            "value": {
+                                "value": "@variables('LoadType')",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "ADFName": {
+                            "value": {
+                                "value": "@pipeline().DataFactory",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "Mergestrategy": {
+                            "value": {
+                                "value": "@if(equals(variables('LoadType'),'Full'),'Truncate_Load','Upsert')",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "PipelineGroupId": {
+                            "value": {
+                                "value": "@pipeline().GroupId",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "PipelineName": {
+                            "value": {
+                                "value": "@pipeline().Pipeline",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "PipelinerunID": {
+                            "value": {
+                                "value": "@pipeline().RunId",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "Pipelinetriggername": {
+                            "value": {
+                                "value": "@pipeline().TriggerName",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "Pipelinetriggertime": {
+                            "value": {
+                                "value": "@pipeline().TriggerTime",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "Pipelinetriggertype": {
+                            "value": {
+                                "value": "@pipeline().TriggerType",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "SourceType": {
+                            "value": {
+                                "value": "@variables('SourceType')",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "AzureSqlDatabase1",
+                    "type": "LinkedServiceReference"
+                }
+            },
+            {
+                "name": "If Condition for Source",
+                "type": "IfCondition",
+                "dependsOn": [
+                    {
+                        "activity": "Insert Audit Details",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "expression": {
+                        "value": "@bool(if(equals(variables('SourceType'),'Table'),'True','False'))",
+                        "type": "Expression"
+                    },
+                    "ifFalseActivities": [
+                        {
+                            "name": "File Source Pipeline",
+                            "type": "ExecutePipeline",
+                            "dependsOn": [],
+                            "policy": {
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "pipeline": {
+                                    "referenceName": "File Source Pipeline",
+                                    "type": "PipelineReference"
+                                },
+                                "waitOnCompletion": true
+                            }
+                        }
+                    ],
+                    "ifTrueActivities": [
+                        {
+                            "name": "Table Source Pipeline",
+                            "type": "ExecutePipeline",
+                            "dependsOn": [],
+                            "policy": {
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "pipeline": {
+                                    "referenceName": "Table Source Pipeline",
+                                    "type": "PipelineReference"
+                                },
+                                "waitOnCompletion": true,
+                                "parameters": {
+                                    "LoadType": {
+                                        "value": "@variables('LoadType')",
+                                        "type": "Expression"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "Email  Notification for BronzeToSilver Failure_copy1",
+                "type": "WebActivity",
+                "dependsOn": [
+                    {
+                        "activity": "BronzeToSilver",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "method": "POST",
+                    "url": "https://prod-32.eastus.logic.azure.com:443/workflows/edba35b53ef0485aa10b5080ce673777/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=c2UKqjoSYTZWuiVUtVm5s5KjF3ywR9lgIuRNzIPLfDk",
+                    "body": {
+                        "value": "{\n    \"PipelineStatus\": \"Failed\",\n    \"pipeline\" : \"@{pipeline().Pipeline}\",\n    \"DataFactoryName\" :\"@{pipeline().DataFactory}\",\n    \"Runid\" : \"@{pipeline().RunId}\",\n    \"runPageUrl\" : \"@{activity('BronzeToSilver').output.runPageUrl}\",\n    \"activityName\" : \"BronzeToSilver\"\n}\n",
+                        "type": "Expression"
+                    }
+                }
+            },
+            {
+                "name": "Success log audit",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "SilverToGold",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "storedProcedureName": "[dbo].[success_log_audits]",
+                    "storedProcedureParameters": {
+                        "PipelinerunID": {
+                            "value": {
+                                "value": "@pipeline().RunId",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "AzureSqlDatabase1",
+                    "type": "LinkedServiceReference"
+                }
+            },
+            {
+                "name": "Email  Notification for SilverToGold Success",
+                "type": "WebActivity",
+                "dependsOn": [
+                    {
+                        "activity": "Success log audit",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "method": "POST",
+                    "url": "https://prod-32.eastus.logic.azure.com:443/workflows/edba35b53ef0485aa10b5080ce673777/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=c2UKqjoSYTZWuiVUtVm5s5KjF3ywR9lgIuRNzIPLfDk",
+                    "body": {
+                        "value": "{\n    \"PipelineStatus\": \"Successful\",\n    \"pipeline\" : \"@{pipeline().Pipeline}\",\n    \"DataFactoryName\" :\"@{pipeline().DataFactory}\",\n    \"Runid\" : \"@{pipeline().RunId}\",\n    \"activityName\" : \"SilverToGold\"\n}\n",
+                        "type": "Expression"
+                    }
+                }
+            },
+            {
+                "name": "Failed log audit",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "SilverToGold",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "storedProcedureName": "[dbo].[failed_log_audits]",
+                    "storedProcedureParameters": {
+                        "PipelinerunID": {
+                            "value": {
+                                "value": "@pipeline().RunId",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "AzureSqlDatabase1",
+                    "type": "LinkedServiceReference"
+                }
+            },
+            {
+                "name": "Failure Email for Insert Audit Details",
+                "type": "WebActivity",
+                "dependsOn": [
+                    {
+                        "activity": "Insert Audit Details",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "method": "POST",
+                    "url": "https://prod-32.eastus.logic.azure.com:443/workflows/edba35b53ef0485aa10b5080ce673777/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=c2UKqjoSYTZWuiVUtVm5s5KjF3ywR9lgIuRNzIPLfDk",
+                    "body": {
+                        "value": "{\n    \"PipelineStatus\": \"Failed\",\n    \"pipeline\" : \"@{pipeline().Pipeline}\",\n    \"DataFactoryName\" :\"@{pipeline().DataFactory}\",\n    \"Runid\" : \"@{pipeline().RunId}\",\n    \"runPageUrl\" : \"@{activity('Insert Audit Details').output.runPageUrl}\",\n    \"activityName\" : \"Insert Audit Details\"\n}\n",
+                        "type": "Expression"
+                    }
+                }
+            },
+            {
+                "name": "Failure Email for Source Pipeline",
+                "type": "WebActivity",
+                "dependsOn": [
+                    {
+                        "activity": "If Condition for Source",
+                        "dependencyConditions": [
+                            "Failed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "method": "POST",
+                    "url": "https://prod-32.eastus.logic.azure.com:443/workflows/edba35b53ef0485aa10b5080ce673777/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=c2UKqjoSYTZWuiVUtVm5s5KjF3ywR9lgIuRNzIPLfDk",
+                    "body": {
+                        "value": "{\n    \"PipelineStatus\": \"Failed\",\n    \"pipeline\" : \"@{pipeline().Pipeline}\",\n    \"DataFactoryName\" :\"@{pipeline().DataFactory}\",\n    \"Runid\" : \"@{pipeline().RunId}\",\n    \"activityName\" : \"Failed for Source\"\n}\n",
+                        "type": "Expression"
+                    }
+                }
+            }
+        ],
+        "parameters": {
+            "cw_items": {
+                "type": "Array",
+                "defaultValue": [
+                    {
+                        "source": {
+                            "table": "Address"
+                        },
+                        "destination": {
+                            "fileName": "SalesLTAddress.parquet"
+                        }
+                    },
+                    {
+                        "source": {
+                            "table": "Customer"
+                        },
+                        "destination": {
+                            "fileName": "SalesLTCustomer.parquet"
+                        }
+                    },
+                    {
+                        "source": {
+                            "table": "CustomerAddress"
+                        },
+                        "destination": {
+                            "fileName": "SalesLTCustomerAddress.parquet"
+                        }
+                    },
+                    {
+                        "source": {
+                            "table": "Product"
+                        },
+                        "destination": {
+                            "fileName": "SalesLTProduct.parquet"
+                        }
+                    },
+                    {
+                        "source": {
+                            "table": "ProductCategory"
+                        },
+                        "destination": {
+                            "fileName": "SalesLTProductCategory.parquet"
+                        }
+                    },
+                    {
+                        "source": {
+                            "table": "ProductDescription"
+                        },
+                        "destination": {
+                            "fileName": "SalesLTProductDescription.parquet"
+                        }
+                    },
+                    {
+                        "source": {
+                            "table": "ProductModel"
+                        },
+                        "destination": {
+                            "fileName": "SalesLTProductModel.parquet"
+                        }
+                    },
+                    {
+                        "source": {
+                            "table": "ProductModelProductDescription"
+                        },
+                        "destination": {
+                            "fileName": "SalesLTProductModelProductDescription.parquet"
+                        }
+                    },
+                    {
+                        "source": {
+                            "table": "SalesOrderDetail"
+                        },
+                        "destination": {
+                            "fileName": "SalesLTSalesOrderDetail.parquet"
+                        }
+                    },
+                    {
+                        "source": {
+                            "table": "SalesOrderHeader"
+                        },
+                        "destination": {
+                            "fileName": "SalesLTSalesOrderHeader.parquet"
+                        }
+                    }
+                ]
+            }
+        },
+        "variables": {
+            "SourceType": {
+                "type": "String",
+                "defaultValue": "Files"
+            },
+            "LoadType": {
+                "type": "String",
+                "defaultValue": "Full"
+            }
+        },
+        "annotations": [],
+        "lastPublishTime": "2024-05-16T13:56:39Z"
+    },
+    "type": "Microsoft.DataFactory/factories/pipelines"
+}

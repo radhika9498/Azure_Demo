@@ -1,0 +1,118 @@
+create table [dbo].[audit_table]
+(
+	Serialnumber INT PRIMARY KEY IDENTITY(1,1),
+	ADFName varchar(255),
+	PipelineGroupId varchar(255),
+	PipelineName varchar(255),
+	PipelinerunID varchar(255),
+	Pipelinetriggername varchar(255),
+	Pipelinetriggertype varchar(255),
+	Pipelinetriggertime varchar(255),
+	Mergestrategy varchar(255),
+	Acquisitionstrategy varchar(255),
+	SourceType varchar(255),
+	dataRead varchar(255),
+	dataWritten varchar(255),
+	filesRead varchar(255),
+	filesWritten varchar(255),
+	PipelineStatus varchar(255)
+);
+
+
+create procedure insert_data as 
+
+insert into [dbo].[audit_table](PipelineName, PipelinerunID, Pipelinetriggername, Pipelinetriggertype, Pipelinetriggertime)
+VALUES (@pipeline().Pipeline, @pipeline().RunId, @pipeline().TriggerName, @pipeline().TriggerType, @pipeline().TriggerTime);
+
+
+
+
+
+
+
+
+insert into watermarktable
+SELECT table_name, lit(1999-01-01)
+FROM information_schema.tables
+WHERE table_type = 'BASE TABLE'
+and table_schema = 'SalesLT';
+
+
+@concat(
+    'SELECT * FROM ',
+    pipeline().parameters.schema_name,
+    '.', 
+    pipeline().parameters.table_name,
+    ' WHERE ModifiedDate > ''',
+    activity('Lookup_old_watermark').output.firstRow.WatermarkValue,
+    ''' AND ModifiedDate <= ''',
+    activity('Lookup_new_watermark').output.firstRow.NewWatermarkvalue,
+    '''         '
+)
+
+
+Stored Procedure
+
+CREATE PROCEDURE inprogress_log_audits
+@ADFName varchar(255),
+	@PipelineGroupId varchar(255),
+	@PipelineName varchar(255),
+	@PipelinerunID varchar(255),
+	@Pipelinetriggername varchar(255),
+	@Pipelinetriggertype varchar(255),
+	@Pipelinetriggertime varchar(255),
+	@Mergestrategy varchar(255),
+	@Acquisitionstrategy varchar(255),
+	@SourceType varchar(255)
+AS
+BEGIN
+ Insert into [dbo].[audit_table](ADFName,PipelineGroupId,PipelineName, PipelinerunID, Pipelinetriggername, Pipelinetriggertype, Pipelinetriggertime, PipelineStatus,Mergestrategy,Acquisitionstrategy,SourceType)
+ values(@ADFName,@PipelineGroupId,@PipelineName, @PipelinerunID, @Pipelinetriggername, @Pipelinetriggertype, @Pipelinetriggertime,'In Progress',@Mergestrategy,@Acquisitionstrategy,@SourceType);
+END
+
+
+CREATE PROCEDURE failed_log_audits
+ @PipelinerunID varchar(255)
+AS
+BEGIN
+    UPDATE [dbo].[audit_table]
+    SET PipelineStatus='Failed'
+    WHERE PipelinerunID=@PipelinerunID;
+END
+
+
+CREATE PROCEDURE success_log_audits
+ @PipelinerunID varchar(255)
+AS
+BEGIN
+    UPDATE [dbo].[audit_table]
+    SET PipelineStatus='Success'
+    WHERE PipelinerunID=@PipelinerunID;
+END
+
+
+CREATE PROCEDURE updated_log_audit
+    @dataRead varchar(255),
+    @dataWritten varchar(255),
+    @filesRead varchar(255),
+    @filesWritten varchar(255),
+    @pipelineTriggeredbyPipelineRunID varchar(225)
+AS
+BEGIN
+    UPDATE [dbo].[audit_table]
+    SET dataRead=@dataRead, dataWritten=@dataWritten, filesRead=@filesRead, filesWritten=@filesWritten
+    WHERE PipelinerunID=@pipelineTriggeredbyPipelineRunID;
+END
+
+
+
+CREATE PROCEDURE usp_write_watermark @LastModifiedtime datetime, @TableName varchar(50)
+AS
+
+BEGIN
+
+UPDATE watermarktable
+SET [WatermarkValue] = @LastModifiedtime
+WHERE [TableName] = @TableName
+
+END

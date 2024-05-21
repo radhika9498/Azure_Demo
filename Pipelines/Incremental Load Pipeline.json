@@ -1,0 +1,199 @@
+{
+    "name": "Incremental Load Pipeline",
+    "properties": {
+        "activities": [
+            {
+                "name": "Old WaterMark Activity",
+                "type": "Lookup",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "AzureSqlSource",
+                        "sqlReaderQuery": {
+                            "value": "select WatermarkValue from dbo.watermarktable where TableName = '@{pipeline().parameters.table_name}'",
+                            "type": "Expression"
+                        },
+                        "queryTimeout": "02:00:00",
+                        "partitionOption": "None"
+                    },
+                    "dataset": {
+                        "referenceName": "SourceSQLList",
+                        "type": "DatasetReference"
+                    },
+                    "firstRowOnly": true
+                }
+            },
+            {
+                "name": "New WaterMark Activity",
+                "type": "Lookup",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "AzureSqlSource",
+                        "sqlReaderQuery": {
+                            "value": "@concat('SELECT MAX(ModifiedDate) as NewWatermarkvalue FROM ',pipeline().parameters.schema_name,'.',pipeline().parameters.table_name)",
+                            "type": "Expression"
+                        },
+                        "queryTimeout": "02:00:00",
+                        "partitionOption": "None"
+                    },
+                    "dataset": {
+                        "referenceName": "SourceSQLList",
+                        "type": "DatasetReference"
+                    },
+                    "firstRowOnly": true
+                }
+            },
+            {
+                "name": "SQL to Landing",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "Old WaterMark Activity",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    },
+                    {
+                        "activity": "New WaterMark Activity",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "AzureSqlSource",
+                        "sqlReaderQuery": {
+                            "value": "@concat(\n    'SELECT * FROM ',\n    pipeline().parameters.schema_name,\n    '.', \n    pipeline().parameters.table_name,\n    ' WHERE ModifiedDate > ''',\n    activity('Old WaterMark Activity').output.firstRow.WatermarkValue,\n    ''' AND ModifiedDate <= ''',\n    activity('New WaterMark Activity').output.firstRow.NewWatermarkvalue,\n    ''''\n)",
+                            "type": "Expression"
+                        },
+                        "queryTimeout": "02:00:00",
+                        "partitionOption": "None"
+                    },
+                    "sink": {
+                        "type": "ParquetSink",
+                        "storeSettings": {
+                            "type": "AzureBlobFSWriteSettings"
+                        },
+                        "formatSettings": {
+                            "type": "ParquetWriteSettings"
+                        }
+                    },
+                    "enableStaging": false,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                },
+                "inputs": [
+                    {
+                        "referenceName": "WMSrcsql2Landing",
+                        "type": "DatasetReference"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "referenceName": "DestLandingZone",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "year": "@substring(utcnow(),0,4)",
+                            "month": "@substring(utcnow(),5,2)",
+                            "day": "@substring(utcnow(),8,2)",
+                            "file_name": {
+                                "value": "@pipeline().parameters.table_name",
+                                "type": "Expression"
+                            },
+                            "schema_name": {
+                                "value": "@pipeline().parameters.schema_name",
+                                "type": "Expression"
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "Update WatermarkValue",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "SQL to Landing",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "storedProcedureName": "[dbo].[usp_write_watermark]",
+                    "storedProcedureParameters": {
+                        "LastModifiedtime": {
+                            "value": {
+                                "value": "@activity('New WaterMark Activity').output.firstRow.NewWatermarkvalue\n",
+                                "type": "Expression"
+                            },
+                            "type": "DateTime"
+                        },
+                        "TableName": {
+                            "value": {
+                                "value": "@pipeline().parameters.table_name",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "AzureSqlDatabase1",
+                    "type": "LinkedServiceReference"
+                }
+            }
+        ],
+        "parameters": {
+            "table_name": {
+                "type": "string"
+            },
+            "schema_name": {
+                "type": "string"
+            }
+        },
+        "annotations": [],
+        "lastPublishTime": "2024-05-15T14:43:36Z"
+    },
+    "type": "Microsoft.DataFactory/factories/pipelines"
+}

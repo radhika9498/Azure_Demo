@@ -1,0 +1,192 @@
+{
+    "name": "Table Source Pipeline",
+    "properties": {
+        "activities": [
+            {
+                "name": "If Condition Full Incremental",
+                "type": "IfCondition",
+                "dependsOn": [],
+                "userProperties": [],
+                "typeProperties": {
+                    "expression": {
+                        "value": "@bool(if(equals(pipeline().parameters.LoadType,'Full'),'True','False'))",
+                        "type": "Expression"
+                    },
+                    "ifFalseActivities": [
+                        {
+                            "name": "Execute Main Incremental Load Pipeline",
+                            "type": "ExecutePipeline",
+                            "dependsOn": [],
+                            "policy": {
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "pipeline": {
+                                    "referenceName": "Main Incremental Pipeline",
+                                    "type": "PipelineReference"
+                                },
+                                "waitOnCompletion": true
+                            }
+                        }
+                    ],
+                    "ifTrueActivities": [
+                        {
+                            "name": "Execute Full Load Pipeline",
+                            "type": "ExecutePipeline",
+                            "dependsOn": [],
+                            "policy": {
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "pipeline": {
+                                    "referenceName": "Full Load Pipeline",
+                                    "type": "PipelineReference"
+                                },
+                                "waitOnCompletion": true
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "Landing to Bronze",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "If Condition Full Incremental",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "ParquetSource",
+                        "storeSettings": {
+                            "type": "AzureBlobFSReadSettings",
+                            "recursive": true,
+                            "wildcardFolderPath": "landing-zone/Table Source",
+                            "wildcardFileName": "*.parquet",
+                            "enablePartitionDiscovery": false
+                        },
+                        "formatSettings": {
+                            "type": "ParquetReadSettings"
+                        }
+                    },
+                    "sink": {
+                        "type": "ParquetSink",
+                        "storeSettings": {
+                            "type": "AzureBlobFSWriteSettings"
+                        },
+                        "formatSettings": {
+                            "type": "ParquetWriteSettings"
+                        }
+                    },
+                    "enableStaging": false,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                },
+                "inputs": [
+                    {
+                        "referenceName": "SrcLanding2Bronze",
+                        "type": "DatasetReference"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "referenceName": "DestLanding2Bronze",
+                        "type": "DatasetReference"
+                    }
+                ]
+            },
+            {
+                "name": "Update Table Data Info",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "Landing to Bronze",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "storedProcedureName": "[dbo].[updated_log_audit]",
+                    "storedProcedureParameters": {
+                        "dataRead": {
+                            "value": {
+                                "value": "@activity('Landing to Bronze').output.dataRead",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "dataWritten": {
+                            "value": {
+                                "value": "@activity('Landing to Bronze').output.dataWritten",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "filesRead": {
+                            "value": {
+                                "value": "@activity('Landing to Bronze').output.filesRead",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "filesWritten": {
+                            "value": {
+                                "value": "@activity('Landing to Bronze').output.filesWritten",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "pipelineTriggeredbyPipelineRunID": {
+                            "value": {
+                                "value": "@pipeline()?.TriggeredByPipelineRunId",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "AzureSqlDatabase1",
+                    "type": "LinkedServiceReference"
+                }
+            }
+        ],
+        "parameters": {
+            "LoadType": {
+                "type": "string"
+            }
+        },
+        "annotations": [],
+        "lastPublishTime": "2024-05-09T08:56:24Z"
+    },
+    "type": "Microsoft.DataFactory/factories/pipelines"
+}

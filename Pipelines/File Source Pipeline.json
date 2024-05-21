@@ -1,0 +1,266 @@
+{
+    "name": "File Source Pipeline",
+    "properties": {
+        "activities": [
+            {
+                "name": "Get Metadata",
+                "type": "GetMetadata",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "dataset": {
+                        "referenceName": "MetaDataFileSystem",
+                        "type": "DatasetReference"
+                    },
+                    "fieldList": [
+                        "childItems"
+                    ],
+                    "storeSettings": {
+                        "type": "AzureBlobFSReadSettings",
+                        "recursive": true,
+                        "enablePartitionDiscovery": false
+                    },
+                    "formatSettings": {
+                        "type": "DelimitedTextReadSettings"
+                    }
+                }
+            },
+            {
+                "name": "For Each Table",
+                "type": "ForEach",
+                "dependsOn": [
+                    {
+                        "activity": "Get Metadata",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "items": {
+                        "value": "@activity('Get Metadata').output.childItems",
+                        "type": "Expression"
+                    },
+                    "isSequential": true,
+                    "activities": [
+                        {
+                            "name": "Files To Landing Zone",
+                            "type": "Copy",
+                            "dependsOn": [],
+                            "policy": {
+                                "timeout": "0.12:00:00",
+                                "retry": 0,
+                                "retryIntervalInSeconds": 30,
+                                "secureOutput": false,
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "source": {
+                                    "type": "DelimitedTextSource",
+                                    "storeSettings": {
+                                        "type": "AzureBlobFSReadSettings",
+                                        "recursive": true,
+                                        "wildcardFolderPath": "files",
+                                        "wildcardFileName": "*.csv",
+                                        "enablePartitionDiscovery": false
+                                    },
+                                    "formatSettings": {
+                                        "type": "DelimitedTextReadSettings"
+                                    }
+                                },
+                                "sink": {
+                                    "type": "DelimitedTextSink",
+                                    "storeSettings": {
+                                        "type": "AzureBlobFSWriteSettings"
+                                    },
+                                    "formatSettings": {
+                                        "type": "DelimitedTextWriteSettings",
+                                        "quoteAllText": true,
+                                        "fileExtension": ".txt"
+                                    }
+                                },
+                                "enableStaging": false,
+                                "translator": {
+                                    "type": "TabularTranslator",
+                                    "typeConversion": true,
+                                    "typeConversionSettings": {
+                                        "allowDataTruncation": true,
+                                        "treatBooleanAsNumber": false
+                                    }
+                                }
+                            },
+                            "inputs": [
+                                {
+                                    "referenceName": "srcFiles2Landing",
+                                    "type": "DatasetReference"
+                                }
+                            ],
+                            "outputs": [
+                                {
+                                    "referenceName": "DestFiles2LandingZone",
+                                    "type": "DatasetReference",
+                                    "parameters": {
+                                        "year": "@substring(utcnow(),0,4)",
+                                        "month": "@substring(utcnow(),5,2)",
+                                        "day": "@substring(utcnow(),8,2)"
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "Files Landing To Bronze",
+                "type": "Copy",
+                "dependsOn": [
+                    {
+                        "activity": "For Each Table",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "DelimitedTextSource",
+                        "storeSettings": {
+                            "type": "AzureBlobFSReadSettings",
+                            "recursive": true,
+                            "wildcardFolderPath": "landing-zone/File Source",
+                            "wildcardFileName": "*",
+                            "enablePartitionDiscovery": false
+                        },
+                        "formatSettings": {
+                            "type": "DelimitedTextReadSettings"
+                        }
+                    },
+                    "sink": {
+                        "type": "DelimitedTextSink",
+                        "storeSettings": {
+                            "type": "AzureBlobFSWriteSettings"
+                        },
+                        "formatSettings": {
+                            "type": "DelimitedTextWriteSettings",
+                            "quoteAllText": true,
+                            "fileExtension": ".txt"
+                        }
+                    },
+                    "enableStaging": false,
+                    "translator": {
+                        "type": "TabularTranslator",
+                        "typeConversion": true,
+                        "typeConversionSettings": {
+                            "allowDataTruncation": true,
+                            "treatBooleanAsNumber": false
+                        }
+                    }
+                },
+                "inputs": [
+                    {
+                        "referenceName": "SrcFilesLanding2Bronze",
+                        "type": "DatasetReference"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "referenceName": "DestFilesLanding2Bronze",
+                        "type": "DatasetReference"
+                    }
+                ]
+            },
+            {
+                "name": "Updated file data info",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "Files Landing To Bronze",
+                        "dependencyConditions": [
+                            "Completed"
+                        ]
+                    }
+                ],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "storedProcedureName": "[dbo].[updated_log_audit]",
+                    "storedProcedureParameters": {
+                        "dataRead": {
+                            "value": {
+                                "value": "@string(activity('Files Landing To Bronze').output.dataRead)",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "dataWritten": {
+                            "value": {
+                                "value": "@string(activity('Files Landing To Bronze').output.dataWritten)",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "filesRead": {
+                            "value": {
+                                "value": "@string(activity('Files Landing To Bronze').output.filesRead)",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "filesWritten": {
+                            "value": {
+                                "value": "@string(activity('Files Landing To Bronze').output.filesWritten)",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        },
+                        "pipelineTriggeredbyPipelineRunID": {
+                            "value": {
+                                "value": "@pipeline()?.TriggeredByPipelineRunId",
+                                "type": "Expression"
+                            },
+                            "type": "String"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "AzureSqlDatabase1",
+                    "type": "LinkedServiceReference"
+                }
+            }
+        ],
+        "variables": {
+            "file_name": {
+                "type": "String"
+            },
+            "filename": {
+                "type": "Array"
+            }
+        },
+        "annotations": [],
+        "lastPublishTime": "2024-05-16T13:56:37Z"
+    },
+    "type": "Microsoft.DataFactory/factories/pipelines"
+}

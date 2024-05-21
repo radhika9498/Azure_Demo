@@ -1,0 +1,84 @@
+{
+    "name": "Main Incremental Pipeline",
+    "properties": {
+        "activities": [
+            {
+                "name": "Lookup Tables",
+                "type": "Lookup",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.12:00:00",
+                    "retry": 0,
+                    "retryIntervalInSeconds": 30,
+                    "secureOutput": false,
+                    "secureInput": false
+                },
+                "userProperties": [],
+                "typeProperties": {
+                    "source": {
+                        "type": "AzureSqlSource",
+                        "sqlReaderQuery": "SELECT table_name, table_schema\nFROM information_schema.tables\nWHERE table_type = 'BASE TABLE'\nand table_schema = 'SalesLT';",
+                        "queryTimeout": "02:00:00",
+                        "partitionOption": "None"
+                    },
+                    "dataset": {
+                        "referenceName": "SourceSQLList",
+                        "type": "DatasetReference"
+                    },
+                    "firstRowOnly": false
+                }
+            },
+            {
+                "name": "ForEach Tables",
+                "type": "ForEach",
+                "dependsOn": [
+                    {
+                        "activity": "Lookup Tables",
+                        "dependencyConditions": [
+                            "Succeeded"
+                        ]
+                    }
+                ],
+                "userProperties": [],
+                "typeProperties": {
+                    "items": {
+                        "value": "@activity('Lookup Tables').output.value",
+                        "type": "Expression"
+                    },
+                    "isSequential": true,
+                    "activities": [
+                        {
+                            "name": "Execute Pipeline Incremental Load",
+                            "type": "ExecutePipeline",
+                            "dependsOn": [],
+                            "policy": {
+                                "secureInput": false
+                            },
+                            "userProperties": [],
+                            "typeProperties": {
+                                "pipeline": {
+                                    "referenceName": "Incremental Load Pipeline",
+                                    "type": "PipelineReference"
+                                },
+                                "waitOnCompletion": true,
+                                "parameters": {
+                                    "table_name": {
+                                        "value": "@item().table_name",
+                                        "type": "Expression"
+                                    },
+                                    "schema_name": {
+                                        "value": "@item().table_schema",
+                                        "type": "Expression"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        ],
+        "annotations": [],
+        "lastPublishTime": "2024-05-15T14:43:37Z"
+    },
+    "type": "Microsoft.DataFactory/factories/pipelines"
+}
